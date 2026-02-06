@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,15 +22,30 @@ from app.schemas.session import (
 router = APIRouter(tags=["sessions"])
 
 
-def _get_today() -> date:
-    # For MVP we use server-local date. This can later be replaced
-    # with user-specific timezone handling.
-    return datetime.now().date()
+def _ensure_utc_aware(dt: datetime) -> datetime:
+    """
+    Make a datetime UTC-aware.
+
+    Backward compatible with previously stored naive datetimes (assumed UTC).
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _local_date_from_utc(now_utc: datetime, tz_offset_minutes: Optional[int]) -> date:
+    """
+    Compute client-local calendar date using provided offset (minutes east of UTC).
+    If no offset is provided, fall back to UTC date.
+    """
+    if tz_offset_minutes is None:
+        return now_utc.date()
+    return (now_utc + timedelta(minutes=int(tz_offset_minutes))).date()
 
 
 @router.post("/session/start", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def start_session(
-    _: SessionStartRequest, db: Session = Depends(get_db)
+    payload: SessionStartRequest, db: Session = Depends(get_db)
 ) -> SessionResponse:
     """
     Start a new Instagram session.
@@ -50,14 +65,14 @@ def start_session(
             detail="A session is already active. End it before starting a new one.",
         )
 
-    now = datetime.now()
+    now_utc = datetime.now(timezone.utc)
     session = SessionModel(
-        start_time=now,
+        start_time=now_utc,
         end_time=None,
         duration_minutes=None,
         reels_watched=None,
         mood=None,
-        date=_get_today(),
+        date=_local_date_from_utc(now_utc, payload.tz_offset_minutes),
     )
     db.add(session)
     db.commit()
@@ -88,19 +103,20 @@ def end_session(payload: SessionEndRequest, db: Session = Depends(get_db)) -> Se
             detail="Session is already ended.",
         )
 
-    now = datetime.now()
-    duration_minutes = int((now - session.start_time).total_seconds() // 60)
+    now_utc = datetime.now(timezone.utc)
+    start_utc = _ensure_utc_aware(session.start_time)
+    duration_minutes = int((now_utc - start_utc).total_seconds() // 60)
     if duration_minutes < 0:
         # Defensive check; should not happen with system clock moving backwards.
         duration_minutes = 0
 
-    session.end_time = now
+    session.end_time = now_utc
     session.duration_minutes = duration_minutes
     session.reels_watched = payload.reels_watched
     session.mood = payload.mood
 
     # Ensure date is set from start_time if missing.
-    session.date = session.date or session.start_time.date()
+    session.date = session.date or start_utc.date()
 
     # Update or create daily summary.
     summary_date = session.date

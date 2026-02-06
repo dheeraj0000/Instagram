@@ -13,8 +13,10 @@ class Session(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)  # reserved for multi-user future
-    start_time = Column(DateTime, nullable=False, index=True)
-    end_time = Column(DateTime, nullable=True, index=True)
+    # Store as timezone-aware UTC datetimes. SQLite won't enforce timezone, but
+    # Pydantic serialization will include an offset when tzinfo is present.
+    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_time = Column(DateTime(timezone=True), nullable=True, index=True)
     duration_minutes = Column(Integer, nullable=True)
     reels_watched = Column(Integer, nullable=True)
     mood = Column(String, nullable=True)

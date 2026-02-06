@@ -17,8 +17,12 @@ class SessionBase(BaseModel):
 class SessionStartRequest(BaseModel):
     """Payload for starting a new session. For now no inputs are required."""
 
-    # In future we could send device info, context, etc.
-    pass
+    # Minutes east of UTC (e.g. IST = +330). Sent by the client so we can
+    # compute the user's local date while still storing timestamps in UTC.
+    tz_offset_minutes: Optional[conint(ge=-840, le=840)] = Field(
+        default=None,
+        description="Minutes east of UTC for the client timezone (e.g. IST=330).",
+    )
 
 
 class SessionEndRequest(SessionBase):

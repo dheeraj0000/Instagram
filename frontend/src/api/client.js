@@ -13,7 +13,12 @@ export const api = axios.create({
 
 // Session-related API calls
 export async function startSession() {
-  const res = await api.post("/session/start", {});
+  // Send timezone offset so backend can compute the correct local date.
+  // We send minutes east of UTC (IST = +330).
+  const tzOffsetMinutesEast = -new Date().getTimezoneOffset();
+  const res = await api.post("/session/start", {
+    tz_offset_minutes: tzOffsetMinutesEast
+  });
   return res.data;
 }
 

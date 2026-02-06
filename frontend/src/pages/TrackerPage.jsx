@@ -12,6 +12,13 @@ function getStoredAvgSecondsPerReel() {
   return Number.isFinite(v) && v >= 3 && v <= 30 ? v : 8;
 }
 
+function parseApiDatetime(value) {
+  if (!value) return null;
+  // If the backend sends timezone info, normal parsing works.
+  const hasTimezone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(value);
+  return hasTimezone ? new Date(value) : new Date(`${value}Z`); // legacy: assume UTC
+}
+
 function TrackerPage() {
   const [activeSession, setActiveSession] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -52,7 +59,8 @@ function TrackerPage() {
 
   const estimate = useMemo(() => {
     if (!activeSession) return null;
-    const startMs = new Date(activeSession.start_time).getTime();
+    const startDate = parseApiDatetime(activeSession.start_time);
+    const startMs = startDate ? startDate.getTime() : Date.now();
     const nowMs = Date.now();
     const durationSeconds = Math.max(0, Math.round((nowMs - startMs) / 1000));
     const estimatedReels = Math.max(
@@ -119,7 +127,7 @@ function TrackerPage() {
             {activeSession ? (
               <div className="pill pill--success">
                 Active • Started{" "}
-                {new Date(activeSession.start_time).toLocaleTimeString([], {
+                {parseApiDatetime(activeSession.start_time)?.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit"
                 })}
